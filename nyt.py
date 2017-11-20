@@ -176,6 +176,7 @@ def Get_News(Dict_):
                 final_Doc[ID]=each
         return final_Doc
     Doc = Get_Final_Doc(Doc)
+    
     #格式清理
     for ID,each in Doc.items():
         try:
