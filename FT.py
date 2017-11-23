@@ -204,6 +204,7 @@ def Get_News(Dict_):
         try:
             each = each.replace('f2','')
             each = each.replace('*','')            
+            each = each.replace('. All rights reserved.', '')
             each = each.replace('. All rights reserved', '')
             each = each.replace('\n\n','')
             each = each.replace('. European Intelligence Wire. All material subject to copyright.','')
@@ -211,17 +212,17 @@ def Get_News(Dict_):
             each = each.strip()
             Doc[ID] = each
         except AttributeError:
-            print('AttributeError Happend')            
-
+            print('AttributeError Happend')   
+            
+            
     #FT格式清理(將Photos: 後的東西給刪除，只留下主文)
     for ID, each in Doc.items():
-        flag = re.search('f2',each)
+        flag = re.search(r'[0-9]+[A-Z][0-9]+.[0-9]+',each)
         if flag != None:
             index = flag.start()
-            Doc[ID] = each[0:index]
-        
-    return Doc
-
+            Doc[ID] = each[0:index]       
+ 
+    return Doc            
     
 
 DOC_FT=[]
