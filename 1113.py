@@ -11,10 +11,13 @@ Created on Mon Nov 13 11:09:07 2017
 import os
 import re
 
+'''
 import sys
-sys.path.append("/Users/renzhengzhong/Desktop/論文/Source_code/WSJReadIn.py") #讀取WSJ的function
-#import WSJReadIn
-
+sys.path.append("/Users/renzhengzhong/Desktop/論文/Source_code/WSJReadIn") #讀取WSJ的function
+import WSJReadIN
+sys.path.append("/Users/renzhengzhong/Desktop/untitled0") 
+import testModule
+'''
 '''存取三大新聞資源所屬資料夾下方之所有檔案'''
 
 #取得每個source每年份之檔案名稱
@@ -47,7 +50,7 @@ class Docpath():
                 print('Not a correct dirPath:', each)
                 pass
         return Doc
-        del Doc
+        #del Doc
     
 #WSJ的所有檔案路徑
 WSJ = Docpath(Path,'WSJ')
@@ -170,13 +173,55 @@ def Get_News(Dict_):
         except AttributeError:
             print('AttributeError Happend')
         
+
+
+    # Convert every news from string to list
+    def ToCorpus(Doc):
+        News={}
+        try:
+            for eachFile in Doc: #從list --> Dic
+                for ID,news in eachFile.items(): #從 Dic -->dic
+                    eachnews = news.split(' ')
+                    News[ID] = eachnews
+        except:
+            pass
+        
+        return News
+
+    Doc = ToCorpus(Doc)
     return Doc
+
 
 DOC_WSJ=[]
 for eachyear in WSJDoc:
     for eachfile in eachyear:
         try:
             DOC_WSJ.append(Get_News(eachfile))
+        except UnicodeDecodeError:
+            print('Error File{}'.format(eachfile))
+            
+        except UnboundLocalError:
+            print('Error File{}'.format(eachfile))
+
+
+DOC_NYT=[]
+for eachyear in NYTDoc:
+    for eachfile in eachyear:
+        try:
+            DOC_NYT.append(Get_News(eachfile))
+        except UnicodeDecodeError:
+            print('Error File{}'.format(eachfile))
+            
+        except UnboundLocalError:
+            print('Error File{}'.format(eachfile))
+
+
+
+DOC_FT=[]
+for eachyear in FTDoc:
+    for eachfile in eachyear:
+        try:
+            DOC_FT.append(Get_News(eachfile))
         except UnicodeDecodeError:
             print('Error File{}'.format(eachfile))
             
