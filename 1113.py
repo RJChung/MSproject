@@ -227,7 +227,7 @@ def tf_idf(corpus):
 #--------------------------------------------------------------------
 
 #Log in Sentiment Words----------------------------------------------
-def senti_word(word_path): # 預計放入四種情緒詞: pos, neg, uncertain, litigious, modal strong
+def senti_word(word_path): # 預計放入五種情緒詞: pos, neg, uncertain, litigious, modal strong
     with open(word_path,'r') as wd:
         WORD = []
         WD = wd.readlines()
@@ -252,8 +252,11 @@ def tidy_ID(ID):
     ID = ID[0:index]
     ID = ID.replace(' yyyy ','/')
     ID = ID.replace(' mmmm ','/')
+    ID = ID.replace(' yyyy','/')
+    ID = ID.replace(' mmmm','/')
     return ID
 
+'''將一天內的所有文章變成一篇大文章: Bag of words 的概念'''
 def BOW(dict_doc):
     bow = {}
     tmp=[]
@@ -261,7 +264,7 @@ def BOW(dict_doc):
         ID = tidy_ID(ID)
         for eachword in eachdoc:
             tmp.append(eachword)
-        if bow[ID] != None:
+        if  ID in bow.keys() :
             bow[ID] = bow[ID] + tmp
         else:
             bow[ID] = tmp
@@ -269,10 +272,45 @@ def BOW(dict_doc):
     return bow
 #--------------------------------------------------------------------
 
+#NVIX by sentiment analysis----------------------------------------------------
+def nvix(BOW,VIX):
+    pos = senti_word('/Users/renzhengzhong/Desktop/tidy_data/pos.txt')
+    neg = senti_word('/Users/renzhengzhong/Desktop/tidy_data/neg.txt')
+    unc = senti_word('/Users/renzhengzhong/Desktop/tidy_data/unc.txt')
+    litigious = senti_word('/Users/renzhengzhong/Desktop/tidy_data/litigious.txt')
+    strong = senti_word('/Users/renzhengzhong/Desktop/tidy_data/strong.txt')
+    score = {}
+    tmp = 0
+    wdcount = 0
+    for ID,Aggre_Doc in BOW.items():
+        for eachword in Aggre_Doc:
+            if eachword in neg:
+                tmp = tmp - 1
+            elif eachword in pos:
+                tmp = tmp + 1 
+            elif eachword in unc:
+                tmp = tmp - 0.5
+            elif eachword in litigious:
+                tmp = tmp - 1.5
+            elif eachword in strong:
+                tmp = tmp - 2
+            else:
+                wdcount = wdcount-1
+            wdcount = wdcount+1
+        score[ID] = tmp/wdcount
+        tmp = 0 
+        wdcount = 0
+    return score
+
+#--------------------------------------------------------------------
+
 
 #Log in VIX Data ----------------------------------------------------
 import pandas as pd  #Data Frame
-VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv')
+# call 值的方式 : VIX.ix['2004/1/2','VIX Close'] --> call 出VIX值
+               # VIX.index --> 跑出所有VIX有值的日期
+VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv',index_col = 0)
+
 #--------------------------------------------------------------------
 
 
@@ -298,10 +336,36 @@ DOC_WSJ = ToCorpus(DOC_WSJ)
 DOC_WSJ = filter_regex(DOC_WSJ)
 DOC_WSJ = filter_stopwords(DOC_WSJ)
 DOC_Corpus = toCorpus(DOC_WSJ)
+WSJ_BOW = BOW(DOC_WSJ)
 WSJ_tfidf,feature = tf_idf(DOC_Corpus)
 X = WSJ_tfidf.toarray()
 #test data
 'the' in DOC_WSJ['2017 yyyy 9 mmmm 20 dddd_1']
+
+'''
+import numpy as np
+np.savetxt('/Users/renzhengzhong/Desktop/tfidf.csv', X[0:2],delimiter=',')
+with open('/Users/renzhengzhong/Desktop/tfidf.csv','w') as f:
+    for each in feature:
+        f.write(each+'\n')
+'''
+
+
+count = 1
+fit_bow={}
+for i in WSJ_BOW.keys():
+    if i in VIX.index:
+        fit_bow[i] = WSJ_BOW[i]
+
+NVIX = nvix(fit_bow,VIX)
+
+test = []
+for ID in VIX.index:
+    if ID == '2010/1/4':
+        break
+    else:
+        test.append([NVIX[ID],VIX.ix[ID,'VIX Close']])
+    
 
 #--------------------------------------------------------------------
 
