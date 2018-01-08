@@ -11,7 +11,17 @@ Created on Mon Nov 13 11:09:07 2017
 import os
 import re
 import nltk
+import numpy as np
 from nltk.collocations import *
+
+'''匯入 VIX Data '''
+#Log in VIX Data ----------------------------------------------------
+import pandas as pd  #Data Frame
+# call 值的方式 : VIX.ix['2004/1/2','VIX Close'] --> call 出VIX值
+               # VIX.index --> 跑出所有VIX有值的日期
+VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv',index_col = 0)
+
+#--------------------------------------------------------------------
 
 '''存取三大新聞資源所屬資料夾下方之所有檔案'''
 
@@ -215,6 +225,8 @@ def toCorpus(Doc_Dict):
         corpus.append(tmp)
     return corpus
 
+#--------------------------------------------------------------------
+# TF-IDF implement
 from sklearn.feature_extraction.text import CountVectorizer  
 from sklearn.feature_extraction.text import TfidfTransformer  
 
@@ -222,8 +234,18 @@ def tf_idf(corpus):
     vectorizer = CountVectorizer()
     transformer = TfidfTransformer()
     tfidf = transformer.fit_transform(vectorizer.fit_transform(corpus))
-    word = vectorizer.get_feature_names()  
+    word = vectorizer.get_feature_names()  #所有文本的關鍵字
+    weight = tfidf.toarray() #對應的tfidf矩陣
+    np.savetxt('/Users/renzhengzhong/Desktop/tfidf.csv', weight, delimiter = ',')
+    '''
+    with open('/Users/renzhengzhong/Desktop/tfidf0108.txt','w',encoding = 'utf-8') as f:
+        for i in range(len(weight)):
+            for j in range(len(word)):
+                if weight[i][j]>0.05:
+                    f.write(word[j]+ "  "+str(weight[i][j]) +'\n')
+    '''
     return tfidf,word
+
 #--------------------------------------------------------------------
 
 #Log in Sentiment Words----------------------------------------------
@@ -281,39 +303,68 @@ def nvix(BOW,VIX):
     strong = senti_word('/Users/renzhengzhong/Desktop/tidy_data/strong.txt')
     score = {}
     tmp = 0
+    class_count=[0,0,0,0,0]
+    count = {}
     wdcount = 0
     for ID,Aggre_Doc in BOW.items():
         for eachword in Aggre_Doc:
             if eachword in neg:
                 tmp = tmp - 1
+                class_count[0]=class_count[0]+1
             elif eachword in pos:
-                tmp = tmp + 1 
+                tmp = tmp - 0.8 
+                class_count[1]=class_count[1]+1                
             elif eachword in unc:
                 tmp = tmp - 0.5
+                class_count[2]=class_count[2]+1
             elif eachword in litigious:
                 tmp = tmp - 1.5
+                class_count[3]=class_count[3]+1
             elif eachword in strong:
                 tmp = tmp - 2
+                class_count[4]=class_count[4]+1
             else:
                 wdcount = wdcount-1
             wdcount = wdcount+1
         score[ID] = tmp/wdcount
+        class_count = [i/wdcount for i in class_count ]
+        count[ID] = class_count
         tmp = 0 
         wdcount = 0
-    return score
+        class_count = [0,0,0,0,0]
+    return score,count
 
 #--------------------------------------------------------------------
 
+#Get the proper data dates-------------------------------------------
+def get_Date(news_Dict,VIX):    
+    Date = []
+    for ID,eachday in news_Dict.items():
+        if ID in VIX.index:
+            Date.append(ID)
+    return Date
+#--------------------------------------------------------------------
 
-#Log in VIX Data ----------------------------------------------------
-import pandas as pd  #Data Frame
-# call 值的方式 : VIX.ix['2004/1/2','VIX Close'] --> call 出VIX值
-               # VIX.index --> 跑出所有VIX有值的日期
-VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv',index_col = 0)
-
+#modified date of VIX------------------------------------------------
+def get_modified_BOW(BOW, Date):
+    tmp={}
+    for each in Date:
+        if each in BOW.keys() :
+            tmp[each] = BOW[each]
+    modified_BOW = tmp
+    return modified_BOW
 #--------------------------------------------------------------------
 
 
+#modified date of VIX------------------------------------------------
+def get_modified_VIX(VIX, Date):
+    tmp={}
+    for each in Date:
+        if each in VIX.index :
+            tmp[each] = VIX.ix[each][0]
+    modified_VIX = tmp
+    return modified_VIX
+#--------------------------------------------------------------------
 
 #Wall Street Journals------------------------------------------------
 #WSJ的所有檔案路徑
@@ -337,37 +388,162 @@ DOC_WSJ = filter_regex(DOC_WSJ)
 DOC_WSJ = filter_stopwords(DOC_WSJ)
 DOC_Corpus = toCorpus(DOC_WSJ)
 WSJ_BOW = BOW(DOC_WSJ)
-WSJ_tfidf,feature = tf_idf(DOC_Corpus)
-X = WSJ_tfidf.toarray()
-#test data
-'the' in DOC_WSJ['2017 yyyy 9 mmmm 20 dddd_1']
-
+Date = get_Date(WSJ_BOW, VIX)
+bow = get_modified_BOW(WSJ_BOW,Date)
+vix = get_modified_VIX(VIX, Date)    
+# WSJ_tfidf,feature = tf_idf(DOC_Corpus)
+# X = WSJ_tfidf.toarray()
+'''
+count = 1
+fit_bow={}
+for i in WSJ_BOW.keys():
+    if i in VIX.index:
+        fit_bow[i] = WSJ_BOW[i]
+'''
+NVIX,N_count = nvix(bow,vix)
+        
 '''
 import numpy as np
 np.savetxt('/Users/renzhengzhong/Desktop/tfidf.csv', X[0:2],delimiter=',')
 with open('/Users/renzhengzhong/Desktop/tfidf.csv','w') as f:
     for each in feature:
         f.write(each+'\n')
-'''
-
-
-count = 1
-fit_bow={}
-for i in WSJ_BOW.keys():
-    if i in VIX.index:
-        fit_bow[i] = WSJ_BOW[i]
-
-NVIX = nvix(fit_bow,VIX)
-
-test = []
-for ID in VIX.index:
-    if ID == '2010/1/4':
-        break
-    else:
-        test.append([NVIX[ID],VIX.ix[ID,'VIX Close']])
-    
+'''    
 
 #--------------------------------------------------------------------
+#try to learn...
+#FEATURES_DF = pd.DataFrame(columns = ['VIX','Neg','Pos','Unc','Ligitious','Strong'])
+
+Date = []
+Neg = []
+Pos = []
+Unc = [] 
+Litigious = []
+Strong = []
+
+for ID,day in N_count.items():
+    Date.append(ID)
+    Neg.append(day[0])
+    Pos.append(day[1])
+    Unc.append(day[2])
+    Litigious.append(day[3])
+    Strong.append(day[4])
+Feat_dict = {'Date' : Date,
+             'Neg':Neg,
+             'Pos':Pos,
+             'Unc':Unc,
+             'Litigious':Litigious,
+             'Strong':Strong}
+pseudo_vix = VIX['VIX Close'][0:3169]
+
+Features_DF = pd.DataFrame(Feat_dict)
+Features_DF['VIX'] = pseudo_vix.values
+
+'''做出上漲下跌的 0 1 數值'''
+from pandas import Series
+Up_Down=[]
+for i in range(len(Features_DF)):
+    if i>=1 and i <= len(Features_DF):
+        if Features_DF['VIX'][i] > Features_DF['VIX'][i-1]:
+            Up_Down.append(1)
+        else:
+            Up_Down.append(0)
+    else:
+        Up_Down.append(0)
+VIX_Up_Down = Series(Up_Down, name = 'VIX_Up_Down')
+Features_DF = pd.concat([Features_DF, VIX_Up_Down],axis = 1)
+del Up_Down
+#__________________________________________________________________
+
+'''訓練與測試資料的準備'''
+from sklearn import cross_validation, metrics   
+# 建立訓練與測試資料
+train_X, test_X, train_y, test_y = \
+cross_validation.train_test_split(Features_DF.iloc[:,1:5],\
+                                  Features_DF.iloc[:,7],\
+                                  test_size = 0.3) #choose the testing data size 
+
+                                  
+'''隨機森林分類器'''
+#from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
+# 建立 random forest 分類器
+forest = RandomForestClassifier(n_estimators = 4) #n_jobs=-1,max_features='auto', \
+                                #n_estimators = 3,random_state = 0)
+# 訓練random forest分類器
+forest_fit = forest.fit(train_X, train_y)
+
+# 預測
+RanFor_test_y_predicted = forest.predict(test_X)
+# 績效
+RF_self = forest.predict(train_X)
+cm_self = metrics.confusion_matrix(train_y, RF_self)
+RanFor_accuracy = metrics.accuracy_score(test_y, RanFor_test_y_predicted)
+cm = metrics.confusion_matrix(test_y, RanFor_test_y_predicted)
+print('Accuracy for Random Forests  = ',RanFor_accuracy)  
+print('TRAIN SCORE: ',forest.score(train_X, train_y),' TEST SCORE: ', forest.score(test_X, test_y))
+
+
+#__________________________________________________________________
+''' SVM 分類器 '''
+from sklearn import svm
+# 建立向量支持器 分類器
+# SVC參數kernel:它指定要在算法中使用的內核類型,
+# 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
+svc = svm.SVC(kernel='rbf', C= 0.5)
+svc_fit = svc.fit(train_X, train_y)
+
+# 預測
+svc_test_y_predicted = svc.predict(test_X)
+# 績效
+svc_accuracy = metrics.accuracy_score(test_y, svc_test_y_predicted)
+print('Accuracy for SVM = ',svc_accuracy) 
+#使用kernel='linear', 再加入辭典(.strip())
+print('TRAIN SCORE: ',svc.score(train_X, train_y),' TEST SCORE: ', svc.score(test_X, test_y))
+#__________________________________________________________________
+
+'''隨機森林回歸''' #(用5個特徵為度 顯示為非常不準確, 完全沒有預測力)
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.datasets import make_regression
+from sklearn.metrics import r2_score
+RFC_X, RFC_Y = make_regression(n_features = 100)
+RFC = RandomForestRegressor(max_depth = 2)
+RFC.fit(train_X, train_y)
+
+print(RFC.feature_importances_)
+RFC_train = RFC.predict(train_X)
+RFC_test = RFC.predict(test_X)
+train_score = r2_score(train_y, RFC_train)
+test_score = r2_score(test_y, RFC_test)
+
+#__________________________________________________________________
+
+'''SVR regression''' #(用5個特徵為度 顯示為非常不準確, 完全沒有預測力)
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+# 建立支持向量機器SVR
+# SVR參數kernel:它指定要在算法中使用的內核類型,
+# 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
+svr = SVR(kernel='rbf', C=1e3, gamma = 0.1)
+svr_fit = svr.fit(train_X, train_y)
+
+# 預測
+svr_test_y_predicted = svr.predict(test_X)
+# 績效
+PCCs = np.corrcoef(svr_test_y_predicted, test_y)
+RMSE = (mean_squared_error(test_y,svr_test_y_predicted))**(1/2)
+R_squared = r2_score(test_y,svr_test_y_predicted)
+print(R_squared)
+print(PCCs)
+print(RMSE)
+#__________________________________________________________________
+
+
+
+
+
+
 
 
 
