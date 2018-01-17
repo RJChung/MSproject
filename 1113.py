@@ -233,19 +233,57 @@ from sklearn.feature_extraction.text import TfidfTransformer
 def tf_idf(corpus):    
     vectorizer = CountVectorizer()
     transformer = TfidfTransformer()
-    tfidf = transformer.fit_transform(vectorizer.fit_transform(corpus))
+    tmp = str()
+    CORPUS = []
+    for ID,each in corpus.items():
+        for wd in each:
+            tmp = tmp +" " +  wd
+        CORPUS.append(tmp)
+        tmp = str()
+    corpus = CORPUS
+    tf = vectorizer.fit_transform(corpus).toarray()
+    tfidf = transformer.fit_transform(tf)
     word = vectorizer.get_feature_names()  #所有文本的關鍵字
-    weight = tfidf.toarray() #對應的tfidf矩陣
-    np.savetxt('/Users/renzhengzhong/Desktop/tfidf.csv', weight, delimiter = ',')
-    '''
-    with open('/Users/renzhengzhong/Desktop/tfidf0108.txt','w',encoding = 'utf-8') as f:
+    weight = tfidf.toarray() #對應的tfidf矩陣    
+    with open('/Users/renzhengzhong/Desktop/tfidf0115.txt','w',encoding = 'utf-8') as f:
         for i in range(len(weight)):
             for j in range(len(word)):
-                if weight[i][j]>0.05:
-                    f.write(word[j]+ "  "+str(weight[i][j]) +'\n')
-    '''
-    return tfidf,word
+                if j == 0:
+                    f.write("doc_{}".format(i) + '\n')                    
+                if weight[i][j]>0.2 and tf[i][j]>4: #只取出現過4次以上的  
+                    f.write(word[j]+'\n')
+    return tfidf,word   # 回傳的tf-idf為一個稀疏矩陣 -->再去查詢關於稀疏矩陣的用法
 
+#--------------------------------------------------------------------
+
+#利用 TFIDF所萃取出來的集合當成是特徵值
+def tfidf_feature_matrix(tfidf_doc_path, Bow): #根據目前情況, 我會把bow丟入 Bow中 
+    with open(tfidf_doc_path,'r', encoding = 'utf-8') as f:
+        total_feature = []
+        for line in f:
+            if line[0:4] == 'doc_':  #每天的feature會在doc_i 之後開始
+                pass
+            else:
+                total_feature.append(line.strip())
+        total_feature = list(set(total_feature))
+    #return total_feature        
+    #make a matrix table( with only raw = doc and col = feature, all default value =0 )
+
+    #feature_table = np.array(total_feature)
+    Feature_Table = pd.DataFrame()
+    #fill in the table
+    column_feature = []
+    for feature in total_feature:
+        for ID,each in Bow.items():
+            if feature in each:
+                column_feature.append(1)
+            else:
+                column_feature.append(0)
+        column_feature = np.array(column_feature).transpose()
+        Feature_Table.insert(0,feature,column_feature)
+        column_feature = []
+        
+    return Feature_Table
 #--------------------------------------------------------------------
 
 #Log in Sentiment Words----------------------------------------------
@@ -293,7 +331,7 @@ def BOW(dict_doc):
         tmp = []
     return bow
 #--------------------------------------------------------------------
-
+'''
 #NVIX by sentiment analysis----------------------------------------------------
 def nvix(BOW,VIX):
     pos = senti_word('/Users/renzhengzhong/Desktop/tidy_data/pos.txt')
@@ -333,7 +371,7 @@ def nvix(BOW,VIX):
         wdcount = 0
         class_count = [0,0,0,0,0]
     return score,count
-
+'''
 #--------------------------------------------------------------------
 
 #Get the proper data dates-------------------------------------------
@@ -391,24 +429,10 @@ WSJ_BOW = BOW(DOC_WSJ)
 Date = get_Date(WSJ_BOW, VIX)
 bow = get_modified_BOW(WSJ_BOW,Date)
 vix = get_modified_VIX(VIX, Date)    
-# WSJ_tfidf,feature = tf_idf(DOC_Corpus)
-# X = WSJ_tfidf.toarray()
-'''
-count = 1
-fit_bow={}
-for i in WSJ_BOW.keys():
-    if i in VIX.index:
-        fit_bow[i] = WSJ_BOW[i]
-'''
-NVIX,N_count = nvix(bow,vix)
-        
-'''
-import numpy as np
-np.savetxt('/Users/renzhengzhong/Desktop/tfidf.csv', X[0:2],delimiter=',')
-with open('/Users/renzhengzhong/Desktop/tfidf.csv','w') as f:
-    for each in feature:
-        f.write(each+'\n')
-'''    
+WSJ_tfidf,feature = tf_idf(bow)
+Table = tfidf_feature_matrix('/Users/renzhengzhong/Desktop/tfidf0115.txt', bow) 
+Table.insert(0,'VIX',vix.values()) #把vix(3169)筆加入dataframe中
+# NVIX,N_count = nvix(bow,vix)   #先連同上面的 nvixfunction一起註解掉
 
 #--------------------------------------------------------------------
 #try to learn...
@@ -459,10 +483,15 @@ del Up_Down
 from sklearn import cross_validation, metrics   
 # 建立訓練與測試資料
 train_X, test_X, train_y, test_y = \
+'''
 cross_validation.train_test_split(Features_DF.iloc[:,1:5],\
                                   Features_DF.iloc[:,7],\
                                   test_size = 0.3) #choose the testing data size 
-
+'''                               
+train_X, test_X, train_y, test_y = \
+cross_validation.train_test_split(Table.iloc[:,1:-1],\
+                                  Table.iloc[:,0],\
+                                  test_size = 0.2) #choose the testing data size 
                                   
 '''隨機森林分類器'''
 #from sklearn.ensemble import RandomForestRegressor
@@ -507,7 +536,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.datasets import make_regression
 from sklearn.metrics import r2_score
 RFC_X, RFC_Y = make_regression(n_features = 100)
-RFC = RandomForestRegressor(max_depth = 2)
+RFC = RandomForestRegressor(max_depth = 20)
 RFC.fit(train_X, train_y)
 
 print(RFC.feature_importances_)
@@ -525,7 +554,7 @@ from sklearn.metrics import r2_score
 # 建立支持向量機器SVR
 # SVR參數kernel:它指定要在算法中使用的內核類型,
 # 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
-svr = SVR(kernel='rbf', C=1e3, gamma = 0.1)
+svr = SVR()
 svr_fit = svr.fit(train_X, train_y)
 
 # 預測
