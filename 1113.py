@@ -10,9 +10,9 @@ Created on Mon Nov 13 11:09:07 2017
 
 import os
 import re
-import nltk
+#import nltk
 import numpy as np
-from nltk.collocations import *
+#from nltk.collocations import *
 
 '''匯入 VIX Data '''
 #Log in VIX Data ----------------------------------------------------
@@ -56,6 +56,7 @@ class Docpath():
                 pass
         return Doc
         #del Doc
+#--------------------------------------------------------------------
 
 def Get_News(Dict_):
     #透過路徑開啟資料
@@ -156,7 +157,7 @@ def Get_News(Dict_):
             print('AttributeError Happend')
             
     return Doc
-
+#--------------------------------------------------------------------
 # Convert every news from string to list
 def ToCorpus(Doc):
     News={}
@@ -173,6 +174,8 @@ def ToCorpus(Doc):
         pass
         print('進入except')
     return News
+#--------------------------------------------------------------------
+
  #先建立stopwords的清單
 with open('/Users/renzhengzhong/Desktop/tidy_data/stopwords.txt','r') as sw:
     Stopwords = sw.readlines()
@@ -190,6 +193,7 @@ def filter_regex(word_dict):
         news_dict[ID] = news_list
         news_list = []
     return news_dict
+#--------------------------------------------------------------------
 
 #Filter words that belong to stopwords
 def filter_stopwords(word_dict):
@@ -205,17 +209,9 @@ def filter_stopwords(word_dict):
         news_dict[ID] = news_list
         news_list = []
     return news_dict
+#--------------------------------------------------------------------
 
-'''
-def Bigram(word_dict):
-    bigram = nltk.collocations.BigramAssocMeasures()
-    #要怎麼去訓練bi-gram ? 思考
-    for ID,doc in word_dict.items():
-        finder = BigramCollocationFinder.from_words(doc)
-        finder.nbest(bigram.pmi,10)
-'''
 #Word Countings------------------------------------------------
-
 def toCorpus(Doc_Dict):
     corpus = []
     for ID,eachdoc in Doc_Dict.items():
@@ -404,6 +400,44 @@ def get_modified_VIX(VIX, Date):
     return modified_VIX
 #--------------------------------------------------------------------
 
+#ups and downs for VIX ------------------------------------------------
+def get_modified_up_down_VIX(Table):
+    
+    Up_Down=[]
+    for i in range(len(Table)):
+        if i>=1 and i <= len(Table):
+            if Table['VIX'][i] > Table['VIX'][i-1]+0.25:
+                Up_Down.append(1)
+            else:
+                Up_Down.append(0)
+        else:
+            Up_Down.append(0)
+    VIX_Up_Down = np.array(Up_Down).transpose()
+    Table.insert(0,'Up_Down',VIX_Up_Down)
+    return Table
+#--------------------------------------------------------------------
+
+
+#ups, holds and downs for VIX ------------------------------------------------
+def get_modified_up_hold_down_VIX(Table):
+    
+    Up_Hold_Down=[]
+    for i in range(len(Table)):
+        if i>=1 and i <= len(Table):
+            if Table['VIX'][i] > Table['VIX'][i-1]+0.1:
+                Up_Hold_Down.append(1)
+            elif Table['VIX'][i] < Table['VIX'][i-1]-0.1:
+                Up_Hold_Down.append(-1)
+            else:
+                Up_Hold_Down.append(0)
+        else:
+            Up_Hold_Down.append(0)
+    VIX_Up_Hold_Down = np.array(Up_Hold_Down).transpose()
+    Table.insert(0,'Up_Hold_Down',VIX_Up_Hold_Down)
+    return Table
+#--------------------------------------------------------------------
+
+
 #Wall Street Journals------------------------------------------------
 #WSJ的所有檔案路徑
 WSJ = Docpath(Path,'WSJ')
@@ -431,7 +465,9 @@ bow = get_modified_BOW(WSJ_BOW,Date)
 vix = get_modified_VIX(VIX, Date)    
 WSJ_tfidf,feature = tf_idf(bow)
 Table = tfidf_feature_matrix('/Users/renzhengzhong/Desktop/tfidf0115.txt', bow) 
-Table.insert(0,'VIX',vix.values()) #把vix(3169)筆加入dataframe中
+Table.insert(0,'VIX',vix.values()) #add vix(#3169) into the dataframe
+Table = get_modified_up_hold_down_VIX(Table)
+Table = get_modified_up_down_VIX(Table)
 # NVIX,N_count = nvix(bow,vix)   #先連同上面的 nvixfunction一起註解掉
 
 #--------------------------------------------------------------------
@@ -482,22 +518,27 @@ del Up_Down
 '''訓練與測試資料的準備'''
 from sklearn import cross_validation, metrics   
 # 建立訓練與測試資料
-train_X, test_X, train_y, test_y = \
 '''
+train_X, test_X, train_y, test_y = \
 cross_validation.train_test_split(Features_DF.iloc[:,1:5],\
                                   Features_DF.iloc[:,7],\
                                   test_size = 0.3) #choose the testing data size 
 '''                               
 train_X, test_X, train_y, test_y = \
-cross_validation.train_test_split(Table.iloc[:,1:-1],\
+cross_validation.train_test_split(Table.iloc[:,2:-1],\
                                   Table.iloc[:,0],\
                                   test_size = 0.2) #choose the testing data size 
-                                  
+''' 效果變很差 
+train_X = Table.iloc[0:2324,1:-1]
+test_X = Table.iloc[2325:3168,1:-1]
+train_y = Table.iloc[0:2324,0]
+test_y = Table.iloc[2325:3168,0]               
+'''
 '''隨機森林分類器'''
 #from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import RandomForestClassifier
 # 建立 random forest 分類器
-forest = RandomForestClassifier(n_estimators = 4) #n_jobs=-1,max_features='auto', \
+forest = RandomForestClassifier()#n_estimators = 500) #n_jobs=-1,max_features='auto', \
                                 #n_estimators = 3,random_state = 0)
 # 訓練random forest分類器
 forest_fit = forest.fit(train_X, train_y)
@@ -508,8 +549,7 @@ RanFor_test_y_predicted = forest.predict(test_X)
 RF_self = forest.predict(train_X)
 cm_self = metrics.confusion_matrix(train_y, RF_self)
 RanFor_accuracy = metrics.accuracy_score(test_y, RanFor_test_y_predicted)
-cm = metrics.confusion_matrix(test_y, RanFor_test_y_predicted)
-print('Accuracy for Random Forests  = ',RanFor_accuracy)  
+cm = metrics.confusion_matrix(test_y, RanFor_test_y_predicted, labels = [0,1])
 print('TRAIN SCORE: ',forest.score(train_X, train_y),' TEST SCORE: ', forest.score(test_X, test_y))
 
 
@@ -519,35 +559,72 @@ from sklearn import svm
 # 建立向量支持器 分類器
 # SVC參數kernel:它指定要在算法中使用的內核類型,
 # 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
-svc = svm.SVC(kernel='rbf', C= 0.5)
+svc = svm.SVC()
 svc_fit = svc.fit(train_X, train_y)
 
 # 預測
-svc_test_y_predicted = svc.predict(test_X)
+svc_predicted = svc.predict(test_X)
 # 績效
-svc_accuracy = metrics.accuracy_score(test_y, svc_test_y_predicted)
-print('Accuracy for SVM = ',svc_accuracy) 
-#使用kernel='linear', 再加入辭典(.strip())
+svc_accuracy = metrics.accuracy_score(test_y, svc_predicted)
+svc_cm = metrics.confusion_matrix(test_y, svc_predicted)
 print('TRAIN SCORE: ',svc.score(train_X, train_y),' TEST SCORE: ', svc.score(test_X, test_y))
 #__________________________________________________________________
+#ADAMBOOST CLASSIFIER
+'''ADAMBOOST 分類器'''
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+# Create and fit an AdaBoosted decision tree  # 
+abt = AdaBoostClassifier(DecisionTreeClassifier(max_depth=6),
+                         algorithm="SAMME",
+                         n_estimators=10)
+abt.fit(train_X, train_y)
 
-'''隨機森林回歸''' #(用5個特徵為度 顯示為非常不準確, 完全沒有預測力)
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.datasets import make_regression
-from sklearn.metrics import r2_score
-RFC_X, RFC_Y = make_regression(n_features = 100)
-RFC = RandomForestRegressor(max_depth = 20)
-RFC.fit(train_X, train_y)
+abt_predicted = abt.predict(test_X)
+abt_accuracy = metrics.accuracy_score(test_y, abt_predicted)
+abt_cm = metrics.confusion_matrix(test_y, abt_predicted)
+print('TRAIN SCORE: ',abt.score(train_X, train_y),' TEST SCORE: ', abt.score(test_X, test_y))
 
-print(RFC.feature_importances_)
-RFC_train = RFC.predict(train_X)
-RFC_test = RFC.predict(test_X)
-train_score = r2_score(train_y, RFC_train)
-test_score = r2_score(test_y, RFC_test)
 
 #__________________________________________________________________
 
-'''SVR regression''' #(用5個特徵為度 顯示為非常不準確, 完全沒有預測力)
+
+'''隨機森林回歸''' 
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.datasets import make_regression
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import median_absolute_error
+from sklearn.metrics import r2_score
+RFC_X, RFC_Y = make_regression()
+RFC = RandomForestRegressor()
+RFC.fit(train_X, train_y)
+
+#print(RFC.feature_importances_)
+
+# predict
+RFC_train = RFC.predict(train_X)
+RFC_test = RFC.predict(test_X)
+
+# performance
+train_score = r2_score(train_y, RFC_train) # train's score
+test_score = r2_score(test_y, RFC_test)
+pccs = np.corrcoef(RFC_train, train_y) # train's pccs
+PCCs = np.corrcoef(RFC_test, test_y)
+rmse = (mean_squared_error(train_y,RFC_train))**(1/2) # train's RMSE
+RMSE = (mean_squared_error(test_y,RFC_test))**(1/2)
+#medianAE = median_absolute_error(train_y, RFC_train) # train's medianAE
+#MedianAE = median_absolute_error(test_y, RFC_test)
+ 
+print('train R2: ', train_score)
+print('test R2: ', test_score) # paper有
+print('train PCCs: ',pccs)
+print('test PCCs: ',PCCs) #correlation paper有
+print('train RMSE: ',rmse)
+print('test RMSE: ', RMSE) # paper 有
+#print('train MedianAE: ',medianAE)
+#print('MedainAE: ',MedianAE)
+#__________________________________________________________________
+
+'''SVR regression''' 
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
@@ -558,19 +635,18 @@ svr = SVR()
 svr_fit = svr.fit(train_X, train_y)
 
 # 預測
-svr_test_y_predicted = svr.predict(test_X)
+#svr = svr.predict(train_X)
+svr_test_y_predicted = svr_fit.predict(test_X)
 # 績效
+#r2 = r2_score(train_y, svr)
+#print(r2)
 PCCs = np.corrcoef(svr_test_y_predicted, test_y)
 RMSE = (mean_squared_error(test_y,svr_test_y_predicted))**(1/2)
 R_squared = r2_score(test_y,svr_test_y_predicted)
-print(R_squared)
+print('r2:',R_squared)
 print(PCCs)
 print(RMSE)
 #__________________________________________________________________
-
-
-
-
 
 
 
