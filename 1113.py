@@ -10,17 +10,15 @@ Created on Mon Nov 13 11:09:07 2017
 
 import os
 import re
-#import nltk
 import numpy as np
-#from nltk.collocations import *
 
 '''匯入 VIX Data '''
 #Log in VIX Data ----------------------------------------------------
 import pandas as pd  #Data Frame
 # call 值的方式 : VIX.ix['2004/1/2','VIX Close'] --> call 出VIX值
                # VIX.index --> 跑出所有VIX有值的日期
-VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv',index_col = 0)
-
+#VIX = pd.read_csv('/Users/renzhengzhong/Desktop/tidy_data/vix_test.csv',index_col = 0)
+VIX = pd.read_csv('/Users/renzhengzhong/Desktop/vix_test.csv',index_col = 0)
 #--------------------------------------------------------------------
 
 '''存取三大新聞資源所屬資料夾下方之所有檔案'''
@@ -211,6 +209,26 @@ def filter_stopwords(word_dict):
     return news_dict
 #--------------------------------------------------------------------
 
+# word lemmatization 
+from nltk.stem.porter import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+porter_stemmer = PorterStemmer()
+wordnet_lemmatizer = WordNetLemmatizer()
+
+
+def wd_stem_lemma(category_list):
+    wordnet_lemmatizer = WordNetLemmatizer()    
+    porter_stemmer = PorterStemmer()
+    stem = []
+    lemm = []
+    for each in category_list:
+        lemm.append(wordnet_lemmatizer.lemmatize(each))
+        stem.append(porter_stemmer.stem(each))    
+    stem = list(set(stem))
+    lemm = list(set(lemm))
+    return stem, lemm
+#--------------------------------------------------------------------
+
 #Word Countings------------------------------------------------
 def toCorpus(Doc_Dict):
     corpus = []
@@ -220,7 +238,6 @@ def toCorpus(Doc_Dict):
             tmp = tmp+eachword+' '
         corpus.append(tmp)
     return corpus
-
 #--------------------------------------------------------------------
 # TF-IDF implement
 from sklearn.feature_extraction.text import CountVectorizer  
@@ -249,7 +266,6 @@ def tf_idf(corpus):
                 if weight[i][j]>0.2 and tf[i][j]>4: #只取出現過4次以上的  
                     f.write(word[j]+'\n')
     return tfidf,word   # 回傳的tf-idf為一個稀疏矩陣 -->再去查詢關於稀疏矩陣的用法
-
 #--------------------------------------------------------------------
 
 #利用 TFIDF所萃取出來的集合當成是特徵值
@@ -312,14 +328,18 @@ def tidy_ID(ID):
     ID = ID.replace(' mmmm','/')
     return ID
 
+from nltk.stem.porter import PorterStemmer
+porter_stemmer = PorterStemmer()
+
 '''將一天內的所有文章變成一篇大文章: Bag of words 的概念'''
 def BOW(dict_doc):
+    porter_stemmer = PorterStemmer()
     bow = {}
     tmp=[]
     for ID,eachdoc in dict_doc.items():
         ID = tidy_ID(ID)
         for eachword in eachdoc:
-            tmp.append(eachword)
+            tmp.append(porter_stemmer.stem(eachword))
         if  ID in bow.keys() :
             bow[ID] = bow[ID] + tmp
         else:
@@ -327,47 +347,31 @@ def BOW(dict_doc):
         tmp = []
     return bow
 #--------------------------------------------------------------------
-'''
-#NVIX by sentiment analysis----------------------------------------------------
-def nvix(BOW,VIX):
-    pos = senti_word('/Users/renzhengzhong/Desktop/tidy_data/pos.txt')
-    neg = senti_word('/Users/renzhengzhong/Desktop/tidy_data/neg.txt')
-    unc = senti_word('/Users/renzhengzhong/Desktop/tidy_data/unc.txt')
-    litigious = senti_word('/Users/renzhengzhong/Desktop/tidy_data/litigious.txt')
-    strong = senti_word('/Users/renzhengzhong/Desktop/tidy_data/strong.txt')
-    score = {}
-    tmp = 0
-    class_count=[0,0,0,0,0]
-    count = {}
-    wdcount = 0
-    for ID,Aggre_Doc in BOW.items():
-        for eachword in Aggre_Doc:
-            if eachword in neg:
-                tmp = tmp - 1
-                class_count[0]=class_count[0]+1
-            elif eachword in pos:
-                tmp = tmp - 0.8 
-                class_count[1]=class_count[1]+1                
-            elif eachword in unc:
-                tmp = tmp - 0.5
-                class_count[2]=class_count[2]+1
-            elif eachword in litigious:
-                tmp = tmp - 1.5
-                class_count[3]=class_count[3]+1
-            elif eachword in strong:
-                tmp = tmp - 2
-                class_count[4]=class_count[4]+1
+def word_category(pos, neg, unc, strong, litigious):
+    five_category = [pos, neg, unc, strong, litigious]
+    category_feature = []
+    for category in five_category:
+        for each in category:
+            category_feature.append(each)
+    return category_feature
+#--------------------------------------------------------------------
+#利用 category當成特徵值
+def category_feature_matrix(category_feature, Bow): #根據目前情況, 我會把bow丟入 Bow中 
+    #feature_table = np.array(total_feature)
+    category_feature = list(set(category_feature))
+    Feature_Table = pd.DataFrame()
+    #fill in the table
+    column_feature = []
+    for feature in category_feature:
+        for ID,each in Bow.items():
+            if feature in each:
+                column_feature.append(each.count(feature)) #這邊修正
             else:
-                wdcount = wdcount-1
-            wdcount = wdcount+1
-        score[ID] = tmp/wdcount
-        class_count = [i/wdcount for i in class_count ]
-        count[ID] = class_count
-        tmp = 0 
-        wdcount = 0
-        class_count = [0,0,0,0,0]
-    return score,count
-'''
+                column_feature.append(0)
+        column_feature = np.array(column_feature).transpose()
+        Feature_Table.insert(0,feature,column_feature)
+        column_feature = []
+    return Feature_Table
 #--------------------------------------------------------------------
 
 #Get the proper data dates-------------------------------------------
@@ -389,7 +393,6 @@ def get_modified_BOW(BOW, Date):
     return modified_BOW
 #--------------------------------------------------------------------
 
-
 #modified date of VIX------------------------------------------------
 def get_modified_VIX(VIX, Date):
     tmp={}
@@ -400,13 +403,25 @@ def get_modified_VIX(VIX, Date):
     return modified_VIX
 #--------------------------------------------------------------------
 
-#ups and downs for VIX ------------------------------------------------
+#Previous day of Close ----------------------------------------------
+def previous_close(vix):
+    tmp = [13.29]
+    value = vix.values()
+    for each in value:
+        if len(tmp) != len(value):
+            tmp.append(each) #2014最後一個交易日的收盤價
+        else:
+            break
+    return tmp
+#--------------------------------------------------------------------
+
+#ups and downs for VIX ----------------------------------------------
 def get_modified_up_down_VIX(Table):
     
     Up_Down=[]
     for i in range(len(Table)):
         if i>=1 and i <= len(Table):
-            if Table['VIX'][i] > Table['VIX'][i-1]+0.25:
+            if Table['VIX'][i] > 1.01*Table['VIX'][i-1]: # Table['VIX'][i-1]*1.01: #原本是 +0.25
                 Up_Down.append(1)
             else:
                 Up_Down.append(0)
@@ -418,15 +433,15 @@ def get_modified_up_down_VIX(Table):
 #--------------------------------------------------------------------
 
 
-#ups, holds and downs for VIX ------------------------------------------------
+#ups, holds and downs for VIX ---------------------------------------
 def get_modified_up_hold_down_VIX(Table):
     
     Up_Hold_Down=[]
     for i in range(len(Table)):
         if i>=1 and i <= len(Table):
-            if Table['VIX'][i] > Table['VIX'][i-1]+0.1:
+            if Table['VIX'][i] > Table['VIX'][i-1]*1.01:
                 Up_Hold_Down.append(1)
-            elif Table['VIX'][i] < Table['VIX'][i-1]-0.1:
+            elif Table['VIX'][i] < Table['VIX'][i-1]*1.01: #
                 Up_Hold_Down.append(-1)
             else:
                 Up_Hold_Down.append(0)
@@ -437,6 +452,25 @@ def get_modified_up_hold_down_VIX(Table):
     return Table
 #--------------------------------------------------------------------
 
+# first order Difference(Vt - Vt-1) ---------------------------------
+
+def diff(Table):
+    difference = []
+    for i in range(0,len(Table)):
+        difference.append(Table['VIX'][i] - Table['LastClose'][i]) # 今收- 昨收
+    return difference
+#--------------------------------------------------------------------
+
+# import other relevant numeric data
+gld = pd.read_csv('/Users/renzhengzhong/Desktop/GLD.csv',index_col = 0)
+sp500 = pd.read_csv('/Users/renzhengzhong/Desktop/SP500.csv',index_col = 0)
+ndaq = pd.read_csv('/Users/renzhengzhong/Desktop/NDAQ.csv',index_col = 0)
+dj = pd.read_csv('/Users/renzhengzhong/Desktop/DJ.csv',index_col = 0)
+us5y = pd.read_csv('/Users/renzhengzhong/Desktop/US5y.csv',index_col = 0)
+
+
+
+#--------------------------------------------------------------------
 
 #Wall Street Journals------------------------------------------------
 #WSJ的所有檔案路徑
@@ -464,192 +498,28 @@ Date = get_Date(WSJ_BOW, VIX)
 bow = get_modified_BOW(WSJ_BOW,Date)
 vix = get_modified_VIX(VIX, Date)    
 WSJ_tfidf,feature = tf_idf(bow)
+
 Table = tfidf_feature_matrix('/Users/renzhengzhong/Desktop/tfidf0115.txt', bow) 
 Table.insert(0,'VIX',vix.values()) #add vix(#3169) into the dataframe
 Table = get_modified_up_hold_down_VIX(Table)
 Table = get_modified_up_down_VIX(Table)
-# NVIX,N_count = nvix(bow,vix)   #先連同上面的 nvixfunction一起註解掉
 
-#--------------------------------------------------------------------
-#try to learn...
-#FEATURES_DF = pd.DataFrame(columns = ['VIX','Neg','Pos','Unc','Ligitious','Strong'])
+cate = word_category(pos, neg, unc, strong, litigious)
+stem,lemm = wd_stem_lemma(cate) 
+cate_table = category_feature_matrix(cate, bow) #未經過stem 或lemma的
+cate_table = category_feature_matrix(stem, bow) #經過stem的 vvvvvvv
+cate_table = category_feature_matrix(stem, bow) #經過lemm的
+cate_table.insert(0,'LastClose',previous_close(vix))    #加入前一天收盤價
+cate_table.insert(0,'VIX',vix.values())
+diff = diff(cate_table)
+cate_table.insert(0,'Diff',diff)
 
-Date = []
-Neg = []
-Pos = []
-Unc = [] 
-Litigious = []
-Strong = []
-
-for ID,day in N_count.items():
-    Date.append(ID)
-    Neg.append(day[0])
-    Pos.append(day[1])
-    Unc.append(day[2])
-    Litigious.append(day[3])
-    Strong.append(day[4])
-Feat_dict = {'Date' : Date,
-             'Neg':Neg,
-             'Pos':Pos,
-             'Unc':Unc,
-             'Litigious':Litigious,
-             'Strong':Strong}
-pseudo_vix = VIX['VIX Close'][0:3169]
-
-Features_DF = pd.DataFrame(Feat_dict)
-Features_DF['VIX'] = pseudo_vix.values
-
-'''做出上漲下跌的 0 1 數值'''
-from pandas import Series
-Up_Down=[]
-for i in range(len(Features_DF)):
-    if i>=1 and i <= len(Features_DF):
-        if Features_DF['VIX'][i] > Features_DF['VIX'][i-1]:
-            Up_Down.append(1)
-        else:
-            Up_Down.append(0)
-    else:
-        Up_Down.append(0)
-VIX_Up_Down = Series(Up_Down, name = 'VIX_Up_Down')
-Features_DF = pd.concat([Features_DF, VIX_Up_Down],axis = 1)
-del Up_Down
-#__________________________________________________________________
-
-'''訓練與測試資料的準備'''
-from sklearn import cross_validation, metrics   
-# 建立訓練與測試資料
-'''
-train_X, test_X, train_y, test_y = \
-cross_validation.train_test_split(Features_DF.iloc[:,1:5],\
-                                  Features_DF.iloc[:,7],\
-                                  test_size = 0.3) #choose the testing data size 
-'''                               
-train_X, test_X, train_y, test_y = \
-cross_validation.train_test_split(Table.iloc[:,2:-1],\
-                                  Table.iloc[:,0],\
-                                  test_size = 0.2) #choose the testing data size 
-''' 效果變很差 
-train_X = Table.iloc[0:2324,1:-1]
-test_X = Table.iloc[2325:3168,1:-1]
-train_y = Table.iloc[0:2324,0]
-test_y = Table.iloc[2325:3168,0]               
-'''
-'''隨機森林分類器'''
-#from sklearn.ensemble import RandomForestRegressor
-from sklearn.ensemble import RandomForestClassifier
-# 建立 random forest 分類器
-forest = RandomForestClassifier()#n_estimators = 500) #n_jobs=-1,max_features='auto', \
-                                #n_estimators = 3,random_state = 0)
-# 訓練random forest分類器
-forest_fit = forest.fit(train_X, train_y)
-
-# 預測
-RanFor_test_y_predicted = forest.predict(test_X)
-# 績效
-RF_self = forest.predict(train_X)
-cm_self = metrics.confusion_matrix(train_y, RF_self)
-RanFor_accuracy = metrics.accuracy_score(test_y, RanFor_test_y_predicted)
-cm = metrics.confusion_matrix(test_y, RanFor_test_y_predicted, labels = [0,1])
-print('TRAIN SCORE: ',forest.score(train_X, train_y),' TEST SCORE: ', forest.score(test_X, test_y))
-
+cate_table = get_modified_up_down_VIX(cate_table)
+#del cate_table['Up_Down']
+cate_table = get_modified_up_hold_down_VIX(cate_table)
+#del cate_table['Up_Hold_Down']
 
 #__________________________________________________________________
-''' SVM 分類器 '''
-from sklearn import svm
-# 建立向量支持器 分類器
-# SVC參數kernel:它指定要在算法中使用的內核類型,
-# 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
-svc = svm.SVC()
-svc_fit = svc.fit(train_X, train_y)
-
-# 預測
-svc_predicted = svc.predict(test_X)
-# 績效
-svc_accuracy = metrics.accuracy_score(test_y, svc_predicted)
-svc_cm = metrics.confusion_matrix(test_y, svc_predicted)
-print('TRAIN SCORE: ',svc.score(train_X, train_y),' TEST SCORE: ', svc.score(test_X, test_y))
-#__________________________________________________________________
-#ADAMBOOST CLASSIFIER
-'''ADAMBOOST 分類器'''
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.tree import DecisionTreeClassifier
-# Create and fit an AdaBoosted decision tree  # 
-abt = AdaBoostClassifier(DecisionTreeClassifier(max_depth=6),
-                         algorithm="SAMME",
-                         n_estimators=10)
-abt.fit(train_X, train_y)
-
-abt_predicted = abt.predict(test_X)
-abt_accuracy = metrics.accuracy_score(test_y, abt_predicted)
-abt_cm = metrics.confusion_matrix(test_y, abt_predicted)
-print('TRAIN SCORE: ',abt.score(train_X, train_y),' TEST SCORE: ', abt.score(test_X, test_y))
-
-
-#__________________________________________________________________
-
-
-'''隨機森林回歸''' 
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.datasets import make_regression
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import median_absolute_error
-from sklearn.metrics import r2_score
-RFC_X, RFC_Y = make_regression()
-RFC = RandomForestRegressor()
-RFC.fit(train_X, train_y)
-
-#print(RFC.feature_importances_)
-
-# predict
-RFC_train = RFC.predict(train_X)
-RFC_test = RFC.predict(test_X)
-
-# performance
-train_score = r2_score(train_y, RFC_train) # train's score
-test_score = r2_score(test_y, RFC_test)
-pccs = np.corrcoef(RFC_train, train_y) # train's pccs
-PCCs = np.corrcoef(RFC_test, test_y)
-rmse = (mean_squared_error(train_y,RFC_train))**(1/2) # train's RMSE
-RMSE = (mean_squared_error(test_y,RFC_test))**(1/2)
-#medianAE = median_absolute_error(train_y, RFC_train) # train's medianAE
-#MedianAE = median_absolute_error(test_y, RFC_test)
- 
-print('train R2: ', train_score)
-print('test R2: ', test_score) # paper有
-print('train PCCs: ',pccs)
-print('test PCCs: ',PCCs) #correlation paper有
-print('train RMSE: ',rmse)
-print('test RMSE: ', RMSE) # paper 有
-#print('train MedianAE: ',medianAE)
-#print('MedainAE: ',MedianAE)
-#__________________________________________________________________
-
-'''SVR regression''' 
-from sklearn.svm import SVR
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import r2_score
-# 建立支持向量機器SVR
-# SVR參數kernel:它指定要在算法中使用的內核類型,
-# 有:'linear','poly','rbf'(default),'sigmoid','precomputed'
-svr = SVR()
-svr_fit = svr.fit(train_X, train_y)
-
-# 預測
-#svr = svr.predict(train_X)
-svr_test_y_predicted = svr_fit.predict(test_X)
-# 績效
-#r2 = r2_score(train_y, svr)
-#print(r2)
-PCCs = np.corrcoef(svr_test_y_predicted, test_y)
-RMSE = (mean_squared_error(test_y,svr_test_y_predicted))**(1/2)
-R_squared = r2_score(test_y,svr_test_y_predicted)
-print('r2:',R_squared)
-print(PCCs)
-print(RMSE)
-#__________________________________________________________________
-
-
-
 
 
 #New York Times------------------------------------------------------
@@ -668,7 +538,67 @@ for eachyear in NYTDoc:
             
         except UnboundLocalError:
             print('Error File{}'.format(eachfile))
-            
+
+
+DOC_NYT = ToCorpus(DOC_NYT)
+DOC_NYT = filter_regex(DOC_NYT)
+DOC_NYT = filter_stopwords(DOC_NYT)
+DOC_Corpus_NYT = toCorpus(DOC_NYT)
+NYT_BOW = BOW(DOC_NYT)
+Date_NYT = get_Date(NYT_BOW, VIX)
+bow_NYT = get_modified_BOW(NYT_BOW,Date_NYT)
+vix_NYT = get_modified_VIX(VIX, Date_NYT)    
+#NYT_tfidf,feature = tf_idf(bow_NYT)
+
+cate = word_category(pos, neg, unc, strong, litigious)
+stem,lemm = wd_stem_lemma(cate) 
+#NYT_cate_table = category_feature_matrix(cate, bow) #未經過stem 或lemma的
+NYT_cate_table = category_feature_matrix(stem, bow_NYT) #經過stem的 vvvvvvv
+#NYT_cate_table = category_feature_matrix(stem, bow) #經過lemm的
+NYT_cate_table.insert(0,'LastClose',previous_close(vix_NYT))    #加入前一天收盤價
+NYT_cate_table.insert(0,'VIX',vix_NYT.values())
+NYT_diff = diff(NYT_cate_table)
+#NYT_cate_table.insert(0,'Diff',NYT_diff)  #不知為何 diff這邊有問題
+
+NYT_cate_table = get_modified_up_down_VIX(NYT_cate_table)
+#del NYT_cate_table['Up_Down']
+NYT_cate_table = get_modified_up_hold_down_VIX(NYT_cate_table)
+#del NYT_cate_table['Up_Hold_Down']
+
+'''訓練與測試資料的準備'''
+from sklearn import cross_validation, metrics   
+# 建立訓練與測試資料
+'''
+train_X, test_X, train_y, test_y = \
+cross_validation.train_test_split(Features_DF.iloc[:,1:5],\
+                                  Features_DF.iloc[:,7],\
+                                  test_size = 0.3) #choose the testing data size 
+'''                               
+#分類器資料
+Ctrain_X, Ctest_X, Ctrain_y, Ctest_y = \
+cross_validation.train_test_split(NYT_cate_table.iloc[:,4:-1],\
+                                  NYT_cate_table.iloc[:,1],\
+                                  test_size = 0.2) #choose the testing data size 
+
+#回歸資料
+Rtrain_X, Rtest_X, Rtrain_y, Rtest_y = \
+cross_validation.train_test_split(NYT_cate_table.iloc[:,4:-1],\
+                                  NYT_cate_table.iloc[:,2],\
+                                  test_size = 0.2) #choose the testing data size 
+                                  
+#分類器資料
+Ctrain_X = NYT_cate_table.iloc[0:2552,5:-1]
+Ctest_X = NYT_cate_table.iloc[2552:3190,5:-1]
+Ctrain_y = NYT_cate_table.iloc[0:2552:,1]
+Ctest_y = NYT_cate_table.iloc[2552:3190,1]
+
+#回歸資料
+Rtrain_X = NYT_cate_table.iloc[0:2552,5:-1] #選擇'5' --> up hold down ; 選擇 4: up down
+Rtest_X = NYT_cate_table.iloc[2552:3190,5:-1]
+Rtrain_y = NYT_cate_table.iloc[0:2552:,2]
+Rtest_y = NYT_cate_table.iloc[2552:3190,2]
+
+
 #--------------------------------------------------------------------
 
 
@@ -689,3 +619,7 @@ for eachyear in FTDoc:
             
         except UnboundLocalError:
             print('Error File{}'.format(eachfile))
+
+#--------------------------------------------------------------------
+
+
